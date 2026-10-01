@@ -13,9 +13,10 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
-import android.widget.Toast;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -30,6 +31,11 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 
+import com.theonionsarewatching.yapchik.Yapchik;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -50,6 +56,8 @@ public class MainActivity extends Activity {
     private String pendingDownloadUrl;
     private String pendingDownloadContentDisposition;
     private String pendingDownloadMimetype;
+    private String softkeysScript;
+    private final Yapchik.StateListener softkeyStateListener = active -> syncNativeSoftkeys();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,7 +109,7 @@ public class MainActivity extends Activity {
                     startDownload(pendingDownloadUrl, pendingDownloadContentDisposition, pendingDownloadMimetype);
                 }
             } else {
-                Toast.makeText(this, "Storage permission required for downloads", Toast.LENGTH_SHORT).show();
+                JtechSoftkeys.message(this, "Storage permission required for downloads");
             }
             pendingDownloadUrl = null;
             pendingDownloadContentDisposition = null;
@@ -204,11 +212,11 @@ public class MainActivity extends Activity {
             ));
 
             container.addView(webView);
-            setContentView(container);
+            setContentView(softkeyRoot(container));
         } else {
             // Fullscreen mode
             webView = new WebView(this);
-            setContentView(webView);
+            setContentView(softkeyRoot(webView));
             hideSystemUI();
         }
 
@@ -218,6 +226,12 @@ public class MainActivity extends Activity {
 
         // Add JavaScript interface for push notifications
         webView.addJavascriptInterface(new PushInterface(), "PushBridge");
+
+        // Hardware soft keys: the page's soft-key bar is mirrored into the native one.
+        if (JtechSoftkeys.isSupported()) {
+            webView.addJavascriptInterface(new SoftkeyInterface(), "SoftkeyBridge");
+            JtechSoftkeys.addStateListener(softkeyStateListener);
+        }
 
         webView.setWebViewClient(new WebViewClient() {
             private final List<String> allowedDomains = Arrays.asList(
@@ -248,8 +262,18 @@ public class MainActivity extends Activity {
                 if (isAllowed(url)) {
                     return false;
                 }
-                Toast.makeText(MainActivity.this, "Not allowed", Toast.LENGTH_SHORT).show();
+                JtechSoftkeys.message(MainActivity.this, "Not allowed");
                 return true;
+            }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                if (isForumApp(url)) {
+                    injectSoftkeys();
+                } else {
+                    JtechSoftkeys.clear(MainActivity.this);
+                }
             }
         });
         webView.setWebChromeClient(new WebChromeClient() {
@@ -288,6 +312,95 @@ public class MainActivity extends Activity {
 
         // Start notification service if already configured
         startPushServiceIfConfigured();
+    }
+
+    @Override
+    protected void onDestroy() {
+        JtechSoftkeys.removeStateListener(softkeyStateListener);
+        super.onDestroy();
+    }
+
+    // ── Hardware soft keys ──────────────────────────────────────────────
+
+    /**
+     * The softkey engine pads the content view's first child to make room for its bar. A WebView
+     * does not lay its page out inside its own padding, and a fitsSystemWindows container rewrites
+     * its padding on every insets pass, so both screen modes sit inside this plain frame instead.
+     */
+    private FrameLayout softkeyRoot(View child) {
+        FrameLayout root = new FrameLayout(this);
+        root.addView(child, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
+        return root;
+    }
+
+    private static boolean isForumApp(String url) {
+        return url != null && (url.equals(BASE_URL) || url.startsWith(BASE_URL + "/")
+            || url.startsWith(BASE_URL + "?") || url.startsWith(BASE_URL + "#"));
+    }
+
+    private void injectSoftkeys() {
+        if (!JtechSoftkeys.isSupported() || webView == null) return;
+        if (softkeysScript == null) {
+            try (InputStream in = getAssets().open("softkeys.js")) {
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
+                softkeysScript = out.toString("UTF-8");
+            } catch (IOException e) {
+                return;
+            }
+        }
+        webView.evaluateJavascript(softkeysScript, null);
+        syncNativeSoftkeys();
+    }
+
+    /** Hide the page's own bar while the native one is active, so there is exactly one. */
+    private void syncNativeSoftkeys() {
+        if (webView == null || !isForumApp(webView.getUrl())) return;
+        webView.evaluateJavascript(JtechSoftkeys.isActive()
+            ? "document.documentElement.setAttribute('data-native-softkeys','')"
+            : "document.documentElement.removeAttribute('data-native-softkeys')", null);
+    }
+
+    /** A native soft-key press clicks the page's own soft-key button, which runs its handler. */
+    private void pressSoftkey(String which) {
+        if (webView == null) return;
+        if (!which.equals("left") && !which.equals("center") && !which.equals("right")) return;
+        webView.evaluateJavascript("(function(){var b=document.querySelector('#softkeys [data-sk=\""
+            + which + "\"]');if(b)b.click();})()", null);
+    }
+
+    /** Called from assets/softkeys.js. Its methods run on a WebView thread. */
+    public class SoftkeyInterface {
+
+        @JavascriptInterface
+        public void onSoftkeys(String left, String center, String right, boolean light, String pref) {
+            runOnUiThread(() -> {
+                if (webView == null || !isForumApp(webView.getUrl())) return;
+                JtechSoftkeys.setModeFromPage(MainActivity.this, pref);
+                JtechSoftkeys.bind(MainActivity.this,
+                    left != null ? left : "",
+                    center != null ? center : "",
+                    right != null ? right : "",
+                    light, MainActivity.this::pressSoftkey);
+            });
+        }
+
+        /** Whether the native bar is active (the page's own bar is then hidden). */
+        @JavascriptInterface
+        public boolean isActive() {
+            return JtechSoftkeys.isActive();
+        }
+
+        /** Detect this phone's soft keys by pressing them (for non-standard keycodes). */
+        @JavascriptInterface
+        public void calibrate() {
+            runOnUiThread(() -> JtechSoftkeys.calibrate(MainActivity.this));
+        }
     }
 
     @Override
@@ -344,7 +457,7 @@ public class MainActivity extends Activity {
         request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
         DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
         dm.enqueue(request);
-        Toast.makeText(this, "Downloading " + fileName, Toast.LENGTH_SHORT).show();
+        JtechSoftkeys.message(this, "Downloading " + fileName);
     }
 
     private void hideSystemUI() {
@@ -355,6 +468,36 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             );
         }
+    }
+
+    /**
+     * Soft keys the native engine didn't take (it's off - Never, a touch phone, API < 26 - or the
+     * slot is blank, or the key isn't in the calibrated layout) still reach the forum page, as the
+     * keys it knows: F1 / F2 are its left / right soft keys, while WebView has no name for
+     * SOFT_LEFT / SOFT_RIGHT, so the page never saw them. MENU is the left soft key on many
+     * keypad phones. Left untranslated, MENU also opened the Activity's empty options panel: an
+     * invisible window that took every key until BACK.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        int translated =
+            code == KeyEvent.KEYCODE_SOFT_LEFT || code == KeyEvent.KEYCODE_MENU ? KeyEvent.KEYCODE_F1
+            : code == KeyEvent.KEYCODE_SOFT_RIGHT ? KeyEvent.KEYCODE_F2
+            : 0;
+        if (translated != 0 && webView != null && isForumApp(webView.getUrl())) {
+            webView.dispatchKeyEvent(new KeyEvent(
+                event.getDownTime(), event.getEventTime(), event.getAction(), translated,
+                event.getRepeatCount(), event.getMetaState()));
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    /** No options menu: an empty one shows as an invisible panel that swallows every key. */
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        return false;
     }
 
     @Override

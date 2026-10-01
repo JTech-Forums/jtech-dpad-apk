@@ -1,0 +1,39 @@
+Softkey Integration (yapchik)
+
+Copyright (C) 2026 theonionsarewatching
+https://github.com/theonionsarewatching/yapchik
+
+This library is free software: you can redistribute it and/or modify it under
+the terms of the GNU Lesser General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version.
+
+This library is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along
+with this library. If not, see <https://www.gnu.org/licenses/>.
+
+The LGPL (LICENSE) incorporates the terms of the GNU General Public License
+version 3 (LICENSE.GPL-3.0), supplemented by the LGPL's additional permissions.
+
+------------------------------------------------------------------------------
+Modifications in this copy (jtech-dpad-apk)
+
+This module is derived from the copy vendored in vela-dpad, which itself
+modifies upstream SoftkeyBar.kt so the bar never takes D-pad focus (API 26+).
+
+Further changes by alltechdev, 2026-09-30:
+- SoftkeySlot.kt: added a label-only CENTER slot (no key profile maps to it).
+- SoftkeyBar.kt: CENTER label (hidden while unbound); colors re-applied from
+  Yapchik.style on every bind so style changes repaint a live bar.
+- SoftkeyConfig.kt: center(...) builder.
+- YapchikStyle.kt: centerTextColor.
+- build.gradle: Groovy build for this project (replaces build.gradle.kts).
+- SoftkeyMessage.kt (new): short messages drawn just above a shown bar, since
+  a framework Toast covers the bar's labels on small screens; a plain Toast
+  when no bar is shown.
+- SoftkeyController.kt: shownBarHeightPx.
+- SoftkeyProfileChooser.kt: the "Saved custom layout" message uses
+  SoftkeyMessage instead of a Toast.
