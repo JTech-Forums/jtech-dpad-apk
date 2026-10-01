@@ -24,6 +24,19 @@ Get the latest APK from [Releases](https://github.com/JTech-Forums/jtech-dpad-ap
 ./gradlew assembleRelease
 ```
 
+## Hardware soft keys
+
+On keypad phones (no touchscreen, or a physical D-pad) on Android 8.0+, the forum's soft-key bar is drawn natively and driven by the phone's real soft keys. The left / center / right labels are always the page's own, on every screen and popup. The forum's **Preferences › Soft-key bar** setting controls it: Keypad phones = automatic, Always = on, Never = off. Touch phones and older Android keep the page's own bar.
+
+To force it on a touch device for testing: `adb shell settings put global jtech_force_dpad 1`
+
 ## License
 
 GPL-3.0
+
+### Yapchik: the hardware soft-key engine
+
+[Yapchik](https://github.com/theonionsarewatching/yapchik) by **theonionsarewatching**, vendored as the [`:yapchik`](yapchik/) module.
+
+- Copyright © 2026 theonionsarewatching
+- GNU Lesser General Public License v3.0 or later. See [`yapchik/LICENSE`](yapchik/LICENSE) and [`yapchik/NOTICE`](yapchik/NOTICE), which lists the local changes.

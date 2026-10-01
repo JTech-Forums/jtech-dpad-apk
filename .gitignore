@@ -11,3 +11,4 @@
 *.jks
 local.properties
 CLAUDE.md
+/yapchik/build

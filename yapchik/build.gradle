@@ -1,0 +1,33 @@
+// Vendored copy of Yapchik (https://github.com/theOnionsAreWatching/yapchik), the softkey
+// engine for keypad / D-pad phones, under LGPL-3.0-or-later (see LICENSE + NOTICE in this
+// module). Ported from vela-dpad's :yapchik (its API-26 focus-block fix included), kept as its
+// OWN module and package so it stays a cleanly replaceable library (LGPL). Local changes are
+// listed in NOTICE. Zero dependencies: framework only, no androidx/appcompat.
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'com.theonionsarewatching.yapchik'
+    compileSdk 35
+
+    defaultConfig {
+        // 26: SoftkeyBar sets defaultFocusHighlightEnabled (API 26). :app (minSdk 23) overrides
+        // this via tools:overrideLibrary and only installs the engine on API 26+.
+        minSdk 26
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = '17'
+    }
+}
+
+dependencies {
+    // Intentionally empty - Yapchik depends only on the Android framework.
+}
