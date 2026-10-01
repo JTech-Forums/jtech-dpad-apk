@@ -16,7 +16,12 @@ Supports Android 6.0+ and Chrome WebView 44+.
 
 ## Download
 
-Get the latest APK from [Releases](https://github.com/JTech-Forums/jtech-dpad-apk/releases/latest).
+Get the latest APK from [Releases](https://github.com/JTech-Forums/jtech-dpad-apk/releases/latest). Each release has two:
+
+- `jtech-<version>.apk`: the standard app.
+- `jtech-<version>-no-foreground-notifications.apk`: the same app without the persistent "Listening for notifications" notification. Push notifications still work, but Android may pause them briefly when it needs memory. Built from the `no-foreground-notifications` branch.
+
+Both are signed with the same key, so either installs as an update over the other.
 
 ## Build
 

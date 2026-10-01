@@ -3,17 +3,30 @@ name: Release
 # Push a tag like v2.4 (or v2.4-beta1) to publish a release with the signed APK attached.
 # The tag must match versionName in app/build.gradle (v2.4 or v2.4-<anything> for versionName 2.4).
 # A tag with a suffix (v2.4-beta1) is published as a pre-release.
+#
+# A second APK, jtech-<tag>-no-foreground-notifications.apk, is built from the
+# no-foreground-notifications branch and added to the same release. That job first merges the
+# tag into the branch and pushes it, so the variant is always the released code minus the
+# foreground service. It runs after the main APK is published and never replaces it; if the
+# merge conflicts, only this job fails. Run it by hand (Actions > Release > Run workflow) to
+# add the variant to an existing release.
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to add the no-foreground-notifications APK to (e.g. v2.4)
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   release:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,3 +75,68 @@ jobs:
           case "$GITHUB_REF_NAME" in *-*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" "jtech-${GITHUB_REF_NAME}.apk" \
             --title "$GITHUB_REF_NAME" --generate-notes $pre
+
+  no-foreground:
+    needs: release
+    # On a tag push: only once the main APK is published. By hand: the release already exists.
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.release.result == 'success')
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: no-foreground-notifications
+          fetch-depth: 0
+
+      - name: Bring the branch up to the release
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          if ! git merge --no-edit -m "Merge $TAG into no-foreground-notifications" "$TAG"; then
+            echo "::error::$TAG does not merge cleanly into no-foreground-notifications. Merge it by hand, push the branch, then run this workflow with tag $TAG."
+            exit 1
+          fi
+          git push origin HEAD:no-foreground-notifications
+
+      - name: Check tag matches versionName
+        run: |
+          tag="${TAG#v}"
+          version=$(sed -n 's/^ *versionName "\(.*\)"/\1/p' app/build.gradle)
+          case "$tag" in
+            "$version"|"$version"-*) ;;
+            *) echo "Tag $TAG does not match versionName $version on no-foreground-notifications"; exit 1 ;;
+          esac
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "KEYSTORE_BASE64 secret is not set"; exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build release
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk "jtech-${TAG}-no-foreground-notifications.apk"
+
+      # Adds a file; never --clobber, so the main APK (or an earlier upload) is never replaced.
+      - name: Add to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" "jtech-${TAG}-no-foreground-notifications.apk" --repo "$GITHUB_REPOSITORY"
