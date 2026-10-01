@@ -58,7 +58,7 @@ object JtechSoftkeys {
         applyThemeColors(light = false)
     }
 
-    /** Settings: the page's "Soft-key bar" preference drives the mode. Small screens (auto) ->
+    /** Settings: the page's "Soft-key bar" preference drives the mode. Keypad phones (auto) ->
      * AUTO, Always (on) -> ON, Never (off) -> OFF. Persisted by the engine; a no-op when unchanged. */
     @JvmStatic
     fun setModeFromPage(pref: String?) {

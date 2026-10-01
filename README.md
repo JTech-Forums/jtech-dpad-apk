@@ -26,7 +26,7 @@ Get the latest APK from [Releases](https://github.com/JTech-Forums/jtech-dpad-ap
 
 ## Hardware soft keys
 
-On keypad phones (no touchscreen, or a physical D-pad) on Android 8.0+, the forum's soft-key bar is drawn natively and driven by the phone's real soft keys. The left / center / right labels are always the page's own, on every screen and popup. The forum's **Preferences › Soft-key bar** setting controls it: Small screens = automatic, Always = on, Never = off. Touch phones and older Android keep the page's own bar.
+On keypad phones (no touchscreen, or a physical D-pad) on Android 8.0+, the forum's soft-key bar is drawn natively and driven by the phone's real soft keys. The left / center / right labels are always the page's own, on every screen and popup. The forum's **Preferences › Soft-key bar** setting controls it: Keypad phones = automatic, Always = on, Never = off. Touch phones and older Android keep the page's own bar.
 
 To force it on a touch device for testing: `adb shell settings put global jtech_force_dpad 1`
 
