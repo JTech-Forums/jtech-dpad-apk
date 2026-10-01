@@ -16,7 +16,7 @@ Supports Android 6.0+ and Chrome WebView 44+.
 
 ## Download
 
-Get the latest beta APK from [Releases](https://github.com/alltechdev/jtech-dpad-apk/releases?q=prerelease%3Atrue).
+Get the latest APK from [Releases](https://github.com/JTech-Forums/jtech-dpad-apk/releases/latest).
 
 ## Build
 
