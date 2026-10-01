@@ -13,6 +13,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.view.InputDevice
+import com.theonionsarewatching.yapchik.SoftkeyMessage
 import com.theonionsarewatching.yapchik.SoftkeyMode
 import com.theonionsarewatching.yapchik.SoftkeyProfileChooser
 import com.theonionsarewatching.yapchik.Softkeys
@@ -59,15 +60,26 @@ object JtechSoftkeys {
     }
 
     /** Settings: the page's "Soft-key bar" preference drives the mode. Keypad phones (auto) ->
-     * AUTO, Always (on) -> ON, Never (off) -> OFF. Persisted by the engine; a no-op when unchanged. */
+     * AUTO, Always (on) -> ON, Never (off) -> OFF. Persisted by the engine; a no-op when unchanged.
+     * The native bar is a keypad feature only: on a touch phone the engine stays OFF whatever the
+     * page says, so Always there means the page's own bar, exactly as before this engine. */
     @JvmStatic
-    fun setModeFromPage(pref: String?) {
+    fun setModeFromPage(context: Context, pref: String?) {
         if (!isSupported) return
-        Yapchik.mode = when (pref) {
-            "on" -> SoftkeyMode.ON
-            "off" -> SoftkeyMode.OFF
+        Yapchik.mode = when {
+            !isDpadFirstDevice(context) -> SoftkeyMode.OFF
+            pref == "on" -> SoftkeyMode.ON
+            pref == "off" -> SoftkeyMode.OFF
             else -> SoftkeyMode.AUTO
         }
+    }
+
+    /** A short message that stays clear of the native bar (a Toast lands on top of it on a
+     * small keypad phone). A plain Toast where the engine isn't supported. */
+    @JvmStatic
+    fun message(activity: Activity, text: String) {
+        if (isSupported) SoftkeyMessage.show(activity, text)
+        else android.widget.Toast.makeText(activity, text, android.widget.Toast.LENGTH_SHORT).show()
     }
 
     /** Run the engine's press-your-keys calibration, for phones whose soft keys emit

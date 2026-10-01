@@ -80,6 +80,10 @@ class SoftkeyController internal constructor(private val activity: Activity) {
     val isBarShown: Boolean
         get() = bar?.parent != null
 
+    /** Height the bar takes at the bottom of the window right now (0 when not shown). */
+    val shownBarHeightPx: Int
+        get() = bar?.takeIf { it.parent != null }?.layoutParams?.height ?: 0
+
     /**
      * Resolved state for this screen. Mode resolution, highest first:
      * this screen's [screenMode], the mode set in a [Yapchik.defaults] block,

@@ -13,9 +13,10 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
-import android.widget.Toast;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.KeyEvent;
+import android.view.Menu;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -108,7 +109,7 @@ public class MainActivity extends Activity {
                     startDownload(pendingDownloadUrl, pendingDownloadContentDisposition, pendingDownloadMimetype);
                 }
             } else {
-                Toast.makeText(this, "Storage permission required for downloads", Toast.LENGTH_SHORT).show();
+                JtechSoftkeys.message(this, "Storage permission required for downloads");
             }
             pendingDownloadUrl = null;
             pendingDownloadContentDisposition = null;
@@ -261,7 +262,7 @@ public class MainActivity extends Activity {
                 if (isAllowed(url)) {
                     return false;
                 }
-                Toast.makeText(MainActivity.this, "Not allowed", Toast.LENGTH_SHORT).show();
+                JtechSoftkeys.message(MainActivity.this, "Not allowed");
                 return true;
             }
 
@@ -380,7 +381,7 @@ public class MainActivity extends Activity {
         public void onSoftkeys(String left, String center, String right, boolean light, String pref) {
             runOnUiThread(() -> {
                 if (webView == null || !isForumApp(webView.getUrl())) return;
-                JtechSoftkeys.setModeFromPage(pref);
+                JtechSoftkeys.setModeFromPage(MainActivity.this, pref);
                 JtechSoftkeys.bind(MainActivity.this,
                     left != null ? left : "",
                     center != null ? center : "",
@@ -460,7 +461,7 @@ public class MainActivity extends Activity {
         request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
         DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
         dm.enqueue(request);
-        Toast.makeText(this, "Downloading " + fileName, Toast.LENGTH_SHORT).show();
+        JtechSoftkeys.message(this, "Downloading " + fileName);
     }
 
     private void hideSystemUI() {
@@ -471,6 +472,36 @@ public class MainActivity extends Activity {
                 | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             );
         }
+    }
+
+    /**
+     * Soft keys the native engine didn't take (it's off - Never, a touch phone, API < 26 - or the
+     * slot is blank, or the key isn't in the calibrated layout) still reach the forum page, as the
+     * keys it knows: F1 / F2 are its left / right soft keys, while WebView has no name for
+     * SOFT_LEFT / SOFT_RIGHT, so the page never saw them. MENU is the left soft key on many
+     * keypad phones. Left untranslated, MENU also opened the Activity's empty options panel: an
+     * invisible window that took every key until BACK.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int code = event.getKeyCode();
+        int translated =
+            code == KeyEvent.KEYCODE_SOFT_LEFT || code == KeyEvent.KEYCODE_MENU ? KeyEvent.KEYCODE_F1
+            : code == KeyEvent.KEYCODE_SOFT_RIGHT ? KeyEvent.KEYCODE_F2
+            : 0;
+        if (translated != 0 && webView != null && isForumApp(webView.getUrl())) {
+            webView.dispatchKeyEvent(new KeyEvent(
+                event.getDownTime(), event.getEventTime(), event.getAction(), translated,
+                event.getRepeatCount(), event.getMetaState()));
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    /** No options menu: an empty one shows as an invisible panel that swallows every key. */
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        return false;
     }
 
     @Override

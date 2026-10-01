@@ -31,3 +31,9 @@ Further changes by alltechdev, 2026-09-30:
 - SoftkeyConfig.kt: center(...) builder.
 - YapchikStyle.kt: centerTextColor.
 - build.gradle: Groovy build for this project (replaces build.gradle.kts).
+- SoftkeyMessage.kt (new): short messages drawn just above a shown bar, since
+  a framework Toast covers the bar's labels on small screens; a plain Toast
+  when no bar is shown.
+- SoftkeyController.kt: shownBarHeightPx.
+- SoftkeyProfileChooser.kt: the "Saved custom layout" message uses
+  SoftkeyMessage instead of a Toast.

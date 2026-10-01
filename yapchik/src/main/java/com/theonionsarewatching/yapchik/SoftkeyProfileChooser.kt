@@ -3,7 +3,6 @@ package com.theonionsarewatching.yapchik
 import android.app.Activity
 import android.app.AlertDialog
 import android.view.KeyEvent
-import android.widget.Toast
 
 /**
  * Ready-made dialogs for picking which physical keys act as softkeys.
@@ -117,11 +116,12 @@ object SoftkeyProfileChooser {
                     val profile = KeyProfile.custom(captured[0], captured[1])
                     Yapchik.keyProfile = profile
                     d.dismiss()
-                    Toast.makeText(
+                    // Above the bar, not over its labels (see SoftkeyMessage).
+                    SoftkeyMessage.show(
                         activity,
                         "Saved custom layout — ${profile.describe()}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                        long = true
+                    )
                     onDone?.invoke(profile)
                 } else {
                     dialog.setTitle("Detect softkeys (2 of 2)")

@@ -191,6 +191,16 @@ public class PushService extends Service {
             conn.setConnectTimeout(30000);
             conn.setReadTimeout(0); // No read timeout for SSE
 
+            // 410 Gone is the server saying this stream is switched off for good (it's what the
+            // forum answers now). Like EventSource, stop instead of retrying every few seconds
+            // forever; the next app start checks again.
+            if (conn.getResponseCode() == HttpURLConnection.HTTP_GONE) {
+                Log.i(TAG, "Push stream is gone (410); not reconnecting");
+                running = false;
+                mainHandler.post(this::stopSelf);
+                return;
+            }
+
             reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
 
             String line;
