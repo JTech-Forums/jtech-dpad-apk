@@ -1,2 +1,4 @@
 rootProject.name = 'jtech-dpad'
 include ':app'
+// Vendored Yapchik softkey engine (LGPL-3.0; see yapchik/NOTICE). Own module = cleanly replaceable.
+include ':yapchik'
