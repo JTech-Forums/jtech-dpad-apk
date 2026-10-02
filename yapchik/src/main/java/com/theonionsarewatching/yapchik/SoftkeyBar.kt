@@ -2,6 +2,7 @@ package com.theonionsarewatching.yapchik
 
 import android.content.Context
 import android.graphics.Typeface
+import android.os.Build
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -47,7 +48,7 @@ class SoftkeyBar(context: Context) : LinearLayout(context) {
         isFocusable = false
         isFocusableInTouchMode = false
         descendantFocusability = FOCUS_BLOCK_DESCENDANTS
-        defaultFocusHighlightEnabled = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) defaultFocusHighlightEnabled = false
 
         // 1dp top hairline
         divider = View(context).apply { setBackgroundColor(style.dividerColor) }

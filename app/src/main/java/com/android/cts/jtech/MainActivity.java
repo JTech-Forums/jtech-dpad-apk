@@ -228,10 +228,8 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new PushInterface(), "PushBridge");
 
         // Hardware soft keys: the page's soft-key bar is mirrored into the native one.
-        if (JtechSoftkeys.isSupported()) {
-            webView.addJavascriptInterface(new SoftkeyInterface(), "SoftkeyBridge");
-            JtechSoftkeys.addStateListener(softkeyStateListener);
-        }
+        webView.addJavascriptInterface(new SoftkeyInterface(), "SoftkeyBridge");
+        JtechSoftkeys.addStateListener(softkeyStateListener);
 
         webView.setWebViewClient(new WebViewClient() {
             private final List<String> allowedDomains = Arrays.asList(
@@ -342,7 +340,7 @@ public class MainActivity extends Activity {
     }
 
     private void injectSoftkeys() {
-        if (!JtechSoftkeys.isSupported() || webView == null) return;
+        if (webView == null) return;
         if (softkeysScript == null) {
             try (InputStream in = getAssets().open("softkeys.js")) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -475,7 +473,7 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Soft keys the native engine didn't take (it's off - Never, a touch phone, API < 26 - or the
+     * Soft keys the native engine didn't take (it's off - Never or a touch phone - or the
      * slot is blank, or the key isn't in the calibrated layout) still reach the forum page, as the
      * keys it knows: F1 / F2 are its left / right soft keys, while WebView has no name for
      * SOFT_LEFT / SOFT_RIGHT, so the page never saw them. MENU is the left soft key on many
