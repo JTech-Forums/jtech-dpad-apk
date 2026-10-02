@@ -2,6 +2,7 @@ package com.theonionsarewatching.yapchik
 
 import android.content.Context
 import android.graphics.Typeface
+import android.os.Build
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -19,10 +20,10 @@ import java.util.EnumMap
  * Modified for jtech-dpad-apk (alltechdev, 2026-09-30):
  * - a label-only CENTER label between LEFT and RIGHT, GONE while CENTER is unbound so
  *   two-slot screens lay out exactly as before;
- * - colors are re-applied from [Yapchik.style] on every [bind], so a style change
- *   (e.g. the host's light/dark theme flipping) repaints the live bar. Before, colors
- *   were read once at construction and the controller reuses its bar for the life of
- *   the Activity, so a repaint never landed.
+ * - colors, label size and label padding are re-applied from [Yapchik.style] on every
+ *   [bind], so a style change (e.g. the host's light/dark theme flipping, or its text size)
+ *   updates the live bar. Before, they were read once at construction and the controller
+ *   reuses its bar for the life of the Activity, so a change never landed.
  */
 class SoftkeyBar(context: Context) : LinearLayout(context) {
 
@@ -47,7 +48,7 @@ class SoftkeyBar(context: Context) : LinearLayout(context) {
         isFocusable = false
         isFocusableInTouchMode = false
         descendantFocusability = FOCUS_BLOCK_DESCENDANTS
-        defaultFocusHighlightEnabled = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) defaultFocusHighlightEnabled = false
 
         // 1dp top hairline
         divider = View(context).apply { setBackgroundColor(style.dividerColor) }
@@ -113,7 +114,13 @@ class SoftkeyBar(context: Context) : LinearLayout(context) {
         val style = Yapchik.style
         setBackgroundColor(style.backgroundColor)
         divider.setBackgroundColor(style.dividerColor)
-        for ((slot, tv) in labels) tv.setTextColor(textColorFor(slot))
+        val hp = dp(style.horizontalPaddingDp)
+        for ((slot, tv) in labels) {
+            tv.setTextColor(textColorFor(slot))
+            // Both only re-lay out when the value actually changed.
+            tv.textSize = style.textSizeSp
+            tv.setPadding(hp, 0, hp, 0)
+        }
     }
 
     private fun textColorFor(slot: SoftkeySlot): Int {

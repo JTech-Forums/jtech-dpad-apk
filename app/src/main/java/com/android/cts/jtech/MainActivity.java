@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Message;
 import android.os.Environment;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
@@ -27,6 +28,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.graphics.Bitmap;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -228,35 +230,16 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new PushInterface(), "PushBridge");
 
         // Hardware soft keys: the page's soft-key bar is mirrored into the native one.
-        if (JtechSoftkeys.isSupported()) {
-            webView.addJavascriptInterface(new SoftkeyInterface(), "SoftkeyBridge");
-            JtechSoftkeys.addStateListener(softkeyStateListener);
-        }
+        webView.addJavascriptInterface(new SoftkeyInterface(), "SoftkeyBridge");
+        JtechSoftkeys.addStateListener(softkeyStateListener);
+
+        // Links that ask for a new window (target="_blank": every link the forum page treats as
+        // outside it, and window.open) are opened here instead of being left to the WebView,
+        // whose handling of them differs between WebView versions - on some phones they did
+        // nothing at all. See onCreateWindow below.
+        settings.setSupportMultipleWindows(true);
 
         webView.setWebViewClient(new WebViewClient() {
-            private final List<String> allowedDomains = Arrays.asList(
-                "jtechforums.org",
-                "forums.jtechforums.org",
-                "drive.usercontent.google.com",
-                "drive.google.com",
-                "dropbox.com",
-                "github.com",
-                "release-assets.githubusercontent.com"
-            );
-
-            private boolean isAllowed(String url) {
-                String host = Uri.parse(url).getHost();
-                if (host == null) return false;
-                host = host.toLowerCase();
-                for (String domain : allowedDomains) {
-                    if (host.equals(domain) || host.equals("www." + domain)
-                            || host.endsWith("." + domain)) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (isAllowed(url)) {
@@ -277,6 +260,42 @@ public class MainActivity extends Activity {
             }
         });
         webView.setWebChromeClient(new WebChromeClient() {
+            /**
+             * A new-window link. The URL isn't passed in, so the request is handed a throwaway
+             * WebView that only reports the URL it was asked to load; that URL then goes through
+             * the same whitelist and opens in this WebView (a download still downloads).
+             */
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                    Message resultMsg) {
+                WebView catcher = new WebView(MainActivity.this);
+                catcher.setWebViewClient(new WebViewClient() {
+                    private boolean done;
+
+                    private void take(WebView v, String url) {
+                        if (done || url == null || url.isEmpty() || url.startsWith("about:")) return;
+                        done = true;
+                        v.stopLoading();
+                        v.post(v::destroy);
+                        openNewWindowUrl(url);
+                    }
+
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                        take(v, url);
+                        return true;
+                    }
+
+                    @Override
+                    public void onPageStarted(WebView v, String url, Bitmap favicon) {
+                        take(v, url);
+                    }
+                });
+                ((WebView.WebViewTransport) resultMsg.obj).setWebView(catcher);
+                resultMsg.sendToTarget();
+                return true;
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
                     FileChooserParams params) {
@@ -314,6 +333,39 @@ public class MainActivity extends Activity {
         startPushServiceIfConfigured();
     }
 
+    private static final List<String> ALLOWED_DOMAINS = Arrays.asList(
+        "jtechforums.org",
+        "forums.jtechforums.org",
+        "drive.usercontent.google.com",
+        "drive.google.com",
+        "dropbox.com",
+        "github.com",
+        "release-assets.githubusercontent.com"
+    );
+
+    private static boolean isAllowed(String url) {
+        String host = Uri.parse(url).getHost();
+        if (host == null) return false;
+        host = host.toLowerCase();
+        for (String domain : ALLOWED_DOMAINS) {
+            if (host.equals(domain) || host.equals("www." + domain)
+                    || host.endsWith("." + domain)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A new-window link's URL: open it in the main WebView if it's allowed, like any link. */
+    private void openNewWindowUrl(String url) {
+        if (webView == null) return;
+        if (isAllowed(url)) {
+            webView.loadUrl(url);
+        } else {
+            JtechSoftkeys.message(this, "Not allowed");
+        }
+    }
+
     @Override
     protected void onDestroy() {
         JtechSoftkeys.removeStateListener(softkeyStateListener);
@@ -342,7 +394,7 @@ public class MainActivity extends Activity {
     }
 
     private void injectSoftkeys() {
-        if (!JtechSoftkeys.isSupported() || webView == null) return;
+        if (webView == null) return;
         if (softkeysScript == null) {
             try (InputStream in = getAssets().open("softkeys.js")) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -378,7 +430,8 @@ public class MainActivity extends Activity {
     public class SoftkeyInterface {
 
         @JavascriptInterface
-        public void onSoftkeys(String left, String center, String right, boolean light, String pref) {
+        public void onSoftkeys(String left, String center, String right, boolean light, String pref,
+                double barPx, double labelPx, double padPx) {
             runOnUiThread(() -> {
                 if (webView == null || !isForumApp(webView.getUrl())) return;
                 JtechSoftkeys.setModeFromPage(MainActivity.this, pref);
@@ -386,7 +439,7 @@ public class MainActivity extends Activity {
                     left != null ? left : "",
                     center != null ? center : "",
                     right != null ? right : "",
-                    light, MainActivity.this::pressSoftkey);
+                    light, barPx, labelPx, padPx, MainActivity.this::pressSoftkey);
             });
         }
 
@@ -452,6 +505,12 @@ public class MainActivity extends Activity {
         if (cookie != null) {
             request.addRequestHeader("Cookie", cookie);
         }
+        // The forum's Cloudflare rules refuse .zip / .apk requests that carry no Referer
+        // ("Attention Required" 403), and DownloadManager sends none, so attachments failed.
+        String page = webView != null ? webView.getUrl() : null;
+        if (page != null && page.startsWith("http")) {
+            request.addRequestHeader("Referer", page);
+        }
         request.setTitle(fileName);
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
         request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
@@ -471,7 +530,7 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Soft keys the native engine didn't take (it's off - Never, a touch phone, API < 26 - or the
+     * Soft keys the native engine didn't take (it's off - Never or a touch phone - or the
      * slot is blank, or the key isn't in the calibrated layout) still reach the forum page, as the
      * keys it knows: F1 / F2 are its left / right soft keys, while WebView has no name for
      * SOFT_LEFT / SOFT_RIGHT, so the page never saw them. MENU is the left soft key on many

@@ -22,7 +22,7 @@ version 3 (LICENSE.GPL-3.0), supplemented by the LGPL's additional permissions.
 Modifications in this copy (jtech-dpad-apk)
 
 This module is derived from the copy vendored in vela-dpad, which itself
-modifies upstream SoftkeyBar.kt so the bar never takes D-pad focus (API 26+).
+modifies upstream SoftkeyBar.kt so the bar never takes D-pad focus.
 
 Further changes by alltechdev, 2026-09-30:
 - SoftkeySlot.kt: added a label-only CENTER slot (no key profile maps to it).
@@ -37,3 +37,9 @@ Further changes by alltechdev, 2026-09-30:
 - SoftkeyController.kt: shownBarHeightPx.
 - SoftkeyProfileChooser.kt: the "Saved custom layout" message uses
   SoftkeyMessage instead of a Toast.
+
+Changes by alltechdev, 2026-10-02:
+- SoftkeyBar.kt: the API 26 focus-highlight call is version-guarded, and
+  the module is minSdk 23, so the bar also runs on Android 6 and 7.
+- SoftkeyBar.kt: label size and padding are also re-applied from
+  Yapchik.style on every bind, so a size change resizes a live bar.
