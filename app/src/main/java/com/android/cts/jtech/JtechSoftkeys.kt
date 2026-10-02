@@ -22,21 +22,14 @@ import java.util.Locale
 
 object JtechSoftkeys {
 
-    /** The engine needs API 26 (see yapchik/build.gradle). Below that it is never installed and
-     * the page keeps drawing its own soft-key bar, exactly as before. */
-    @JvmStatic
-    val isSupported: Boolean
-        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-
     /** Whether the native bar is resolved-active (mode ON, or AUTO on a keypad device). While true,
      * the page's own bar is hidden so there is exactly one. */
     @JvmStatic
-    fun isActive(): Boolean = isSupported && Yapchik.isActive
+    fun isActive(): Boolean = Yapchik.isActive
 
     /** One-time engine setup, called from [JtechApp.onCreate]. */
     @JvmStatic
     fun init(app: Application) {
-        if (!isSupported) return
         Yapchik.install(app)
         // Softkeys are strictly a KEYPAD / D-pad-first feature. Gate the engine on the same
         // conservative detector Vela uses (plus a `jtech_force_dpad` test override) so the bar
@@ -51,11 +44,10 @@ object JtechSoftkeys {
         // that guard is phantom height - the bar looks DOUBLE-tall on a device with no real nav
         // bar (Vela tester report). 0 = off.
         Yapchik.navGuardDp = 0
-        Yapchik.style.apply {
-            heightDp = 44
-            textSizeSp = 15f
-            bold = true
-        }
+        // Sized like the page's own bar at the default Text size until the page reports its
+        // real size (see bind); bold = sans-serif-medium, like the page's weight-600 labels.
+        Yapchik.style.bold = true
+        applyPageSize(app, PAGE_BAR_PX, PAGE_LABEL_PX, PAGE_PAD_PX)
         applyThemeColors(light = false)
     }
 
@@ -65,7 +57,6 @@ object JtechSoftkeys {
      * page says, so Always there means the page's own bar, exactly as before this engine. */
     @JvmStatic
     fun setModeFromPage(context: Context, pref: String?) {
-        if (!isSupported) return
         Yapchik.mode = when {
             !isDpadFirstDevice(context) -> SoftkeyMode.OFF
             pref == "on" -> SoftkeyMode.ON
@@ -75,28 +66,27 @@ object JtechSoftkeys {
     }
 
     /** A short message that stays clear of the native bar (a Toast lands on top of it on a
-     * small keypad phone). A plain Toast where the engine isn't supported. */
+     * small keypad phone). A plain Toast while no bar is shown. */
     @JvmStatic
     fun message(activity: Activity, text: String) {
-        if (isSupported) SoftkeyMessage.show(activity, text)
-        else android.widget.Toast.makeText(activity, text, android.widget.Toast.LENGTH_SHORT).show()
+        SoftkeyMessage.show(activity, text)
     }
 
     /** Run the engine's press-your-keys calibration, for phones whose soft keys emit
      * non-standard keycodes. Capture is driven by the key press itself. */
     @JvmStatic
     fun calibrate(activity: Activity) {
-        if (isSupported) SoftkeyProfileChooser.startCalibration(activity)
+        SoftkeyProfileChooser.startCalibration(activity)
     }
 
     @JvmStatic
     fun addStateListener(listener: Yapchik.StateListener) {
-        if (isSupported) Yapchik.addStateListener(listener)
+        Yapchik.addStateListener(listener)
     }
 
     @JvmStatic
     fun removeStateListener(listener: Yapchik.StateListener) {
-        if (isSupported) Yapchik.removeStateListener(listener)
+        Yapchik.removeStateListener(listener)
     }
 
     /** A soft-key press, by the page's own slot name: "left", "center" or "right". */
@@ -117,10 +107,13 @@ object JtechSoftkeys {
         centerLabel: String,
         rightLabel: String,
         light: Boolean,
+        barPx: Double,
+        labelPx: Double,
+        padPx: Double,
         press: PressHandler
     ) {
-        if (!isSupported) return
         applyThemeColors(light)
+        applyPageSize(activity, barPx, labelPx, padPx)
         val ctl = Softkeys.of(activity)
         if (leftLabel.isEmpty() && centerLabel.isEmpty() && rightLabel.isEmpty()) {
             ctl.clear()
@@ -137,10 +130,30 @@ object JtechSoftkeys {
         }
     }
 
+    // dumbcourse's own bar at the default Text size: --sk-h 1.9rem, labels 0.8rem, padding
+    // 0.5rem, with a 15px root font.
+    private const val PAGE_BAR_PX = 28.5
+    private const val PAGE_LABEL_PX = 12.0
+    private const val PAGE_PAD_PX = 7.5
+
+    /**
+     * Size the bar exactly like the page's own (sizes in CSS px, which are dp in a WebView), so
+     * it takes the same room the page's bar did, on every phone and Text size. The label is set
+     * in sp, so it is divided by the font scale to land on the page's size, not scaled twice.
+     * Nonsense values (an engine that couldn't measure) leave the current size alone.
+     */
+    private fun applyPageSize(context: Context, barPx: Double, labelPx: Double, padPx: Double) {
+        if (!(barPx > 0 && labelPx > 0 && padPx >= 0)) return
+        val fontScale = context.resources.configuration.fontScale.takeIf { it > 0f } ?: 1f
+        Yapchik.style.heightDp = Math.round(barPx).toInt()
+        Yapchik.style.textSizeSp = (labelPx / fontScale).toFloat()
+        Yapchik.style.horizontalPaddingDp = Math.round(padPx).toInt()
+    }
+
     /** Remove the bar (a page other than the forum app, or the page is reloading). */
     @JvmStatic
     fun clear(activity: Activity) {
-        if (isSupported) Softkeys.of(activity).clear()
+        Softkeys.of(activity).clear()
     }
 
     /** Paint the bar from the page's own theme tokens (dumbcourse 00-tokens.css), the colours its
