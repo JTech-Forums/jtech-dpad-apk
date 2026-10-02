@@ -454,6 +454,12 @@ public class MainActivity extends Activity {
         if (cookie != null) {
             request.addRequestHeader("Cookie", cookie);
         }
+        // The forum's Cloudflare rules refuse .zip / .apk requests that carry no Referer
+        // ("Attention Required" 403), and DownloadManager sends none, so attachments failed.
+        String page = webView != null ? webView.getUrl() : null;
+        if (page != null && page.startsWith("http")) {
+            request.addRequestHeader("Referer", page);
+        }
         request.setTitle(fileName);
         request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
         request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName);
