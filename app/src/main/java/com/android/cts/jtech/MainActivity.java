@@ -376,7 +376,8 @@ public class MainActivity extends Activity {
     public class SoftkeyInterface {
 
         @JavascriptInterface
-        public void onSoftkeys(String left, String center, String right, boolean light, String pref) {
+        public void onSoftkeys(String left, String center, String right, boolean light, String pref,
+                double barPx, double labelPx, double padPx) {
             runOnUiThread(() -> {
                 if (webView == null || !isForumApp(webView.getUrl())) return;
                 JtechSoftkeys.setModeFromPage(MainActivity.this, pref);
@@ -384,7 +385,7 @@ public class MainActivity extends Activity {
                     left != null ? left : "",
                     center != null ? center : "",
                     right != null ? right : "",
-                    light, MainActivity.this::pressSoftkey);
+                    light, barPx, labelPx, padPx, MainActivity.this::pressSoftkey);
             });
         }
 

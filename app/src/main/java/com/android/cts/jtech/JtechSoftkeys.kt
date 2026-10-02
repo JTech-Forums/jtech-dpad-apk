@@ -44,11 +44,10 @@ object JtechSoftkeys {
         // that guard is phantom height - the bar looks DOUBLE-tall on a device with no real nav
         // bar (Vela tester report). 0 = off.
         Yapchik.navGuardDp = 0
-        Yapchik.style.apply {
-            heightDp = 44
-            textSizeSp = 15f
-            bold = true
-        }
+        // Sized like the page's own bar at the default Text size until the page reports its
+        // real size (see bind); bold = sans-serif-medium, like the page's weight-600 labels.
+        Yapchik.style.bold = true
+        applyPageSize(app, PAGE_BAR_PX, PAGE_LABEL_PX, PAGE_PAD_PX)
         applyThemeColors(light = false)
     }
 
@@ -108,9 +107,13 @@ object JtechSoftkeys {
         centerLabel: String,
         rightLabel: String,
         light: Boolean,
+        barPx: Double,
+        labelPx: Double,
+        padPx: Double,
         press: PressHandler
     ) {
         applyThemeColors(light)
+        applyPageSize(activity, barPx, labelPx, padPx)
         val ctl = Softkeys.of(activity)
         if (leftLabel.isEmpty() && centerLabel.isEmpty() && rightLabel.isEmpty()) {
             ctl.clear()
@@ -125,6 +128,26 @@ object JtechSoftkeys {
             }
             if (rightLabel.isNotEmpty()) right(rightLabel) { press.onPress("right") }
         }
+    }
+
+    // dumbcourse's own bar at the default Text size: --sk-h 1.9rem, labels 0.8rem, padding
+    // 0.5rem, with a 15px root font.
+    private const val PAGE_BAR_PX = 28.5
+    private const val PAGE_LABEL_PX = 12.0
+    private const val PAGE_PAD_PX = 7.5
+
+    /**
+     * Size the bar exactly like the page's own (sizes in CSS px, which are dp in a WebView), so
+     * it takes the same room the page's bar did, on every phone and Text size. The label is set
+     * in sp, so it is divided by the font scale to land on the page's size, not scaled twice.
+     * Nonsense values (an engine that couldn't measure) leave the current size alone.
+     */
+    private fun applyPageSize(context: Context, barPx: Double, labelPx: Double, padPx: Double) {
+        if (!(barPx > 0 && labelPx > 0 && padPx >= 0)) return
+        val fontScale = context.resources.configuration.fontScale.takeIf { it > 0f } ?: 1f
+        Yapchik.style.heightDp = Math.round(barPx).toInt()
+        Yapchik.style.textSizeSp = (labelPx / fontScale).toFloat()
+        Yapchik.style.horizontalPaddingDp = Math.round(padPx).toInt()
     }
 
     /** Remove the bar (a page other than the forum app, or the page is reloading). */
