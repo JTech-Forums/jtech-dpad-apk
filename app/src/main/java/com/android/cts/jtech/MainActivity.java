@@ -10,6 +10,7 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Message;
 import android.os.Environment;
 import android.webkit.CookieManager;
 import android.webkit.URLUtil;
@@ -27,6 +28,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.graphics.Bitmap;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
@@ -231,30 +233,13 @@ public class MainActivity extends Activity {
         webView.addJavascriptInterface(new SoftkeyInterface(), "SoftkeyBridge");
         JtechSoftkeys.addStateListener(softkeyStateListener);
 
+        // Links that ask for a new window (target="_blank": every link the forum page treats as
+        // outside it, and window.open) are opened here instead of being left to the WebView,
+        // whose handling of them differs between WebView versions - on some phones they did
+        // nothing at all. See onCreateWindow below.
+        settings.setSupportMultipleWindows(true);
+
         webView.setWebViewClient(new WebViewClient() {
-            private final List<String> allowedDomains = Arrays.asList(
-                "jtechforums.org",
-                "forums.jtechforums.org",
-                "drive.usercontent.google.com",
-                "drive.google.com",
-                "dropbox.com",
-                "github.com",
-                "release-assets.githubusercontent.com"
-            );
-
-            private boolean isAllowed(String url) {
-                String host = Uri.parse(url).getHost();
-                if (host == null) return false;
-                host = host.toLowerCase();
-                for (String domain : allowedDomains) {
-                    if (host.equals(domain) || host.equals("www." + domain)
-                            || host.endsWith("." + domain)) {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (isAllowed(url)) {
@@ -275,6 +260,42 @@ public class MainActivity extends Activity {
             }
         });
         webView.setWebChromeClient(new WebChromeClient() {
+            /**
+             * A new-window link. The URL isn't passed in, so the request is handed a throwaway
+             * WebView that only reports the URL it was asked to load; that URL then goes through
+             * the same whitelist and opens in this WebView (a download still downloads).
+             */
+            @Override
+            public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture,
+                    Message resultMsg) {
+                WebView catcher = new WebView(MainActivity.this);
+                catcher.setWebViewClient(new WebViewClient() {
+                    private boolean done;
+
+                    private void take(WebView v, String url) {
+                        if (done || url == null || url.isEmpty() || url.startsWith("about:")) return;
+                        done = true;
+                        v.stopLoading();
+                        v.post(v::destroy);
+                        openNewWindowUrl(url);
+                    }
+
+                    @Override
+                    public boolean shouldOverrideUrlLoading(WebView v, String url) {
+                        take(v, url);
+                        return true;
+                    }
+
+                    @Override
+                    public void onPageStarted(WebView v, String url, Bitmap favicon) {
+                        take(v, url);
+                    }
+                });
+                ((WebView.WebViewTransport) resultMsg.obj).setWebView(catcher);
+                resultMsg.sendToTarget();
+                return true;
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
                     FileChooserParams params) {
@@ -310,6 +331,39 @@ public class MainActivity extends Activity {
 
         // Start notification service if already configured
         startPushServiceIfConfigured();
+    }
+
+    private static final List<String> ALLOWED_DOMAINS = Arrays.asList(
+        "jtechforums.org",
+        "forums.jtechforums.org",
+        "drive.usercontent.google.com",
+        "drive.google.com",
+        "dropbox.com",
+        "github.com",
+        "release-assets.githubusercontent.com"
+    );
+
+    private static boolean isAllowed(String url) {
+        String host = Uri.parse(url).getHost();
+        if (host == null) return false;
+        host = host.toLowerCase();
+        for (String domain : ALLOWED_DOMAINS) {
+            if (host.equals(domain) || host.equals("www." + domain)
+                    || host.endsWith("." + domain)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** A new-window link's URL: open it in the main WebView if it's allowed, like any link. */
+    private void openNewWindowUrl(String url) {
+        if (webView == null) return;
+        if (isAllowed(url)) {
+            webView.loadUrl(url);
+        } else {
+            JtechSoftkeys.message(this, "Not allowed");
+        }
     }
 
     @Override
