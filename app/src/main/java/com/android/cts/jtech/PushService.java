@@ -43,6 +43,17 @@ public class PushService extends Service {
         createNotificationChannel();
     }
 
+    /** Leave the foreground and remove its notification. stopForeground(int) is Android 7+; on
+     * Android 6 it doesn't exist (the service crashed), and stopForeground(true) does the same. */
+    @SuppressWarnings("deprecation")
+    private void removeForeground() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } else {
+            stopForeground(true);
+        }
+    }
+
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent != null && "STOP".equals(intent.getAction())) {
@@ -54,7 +65,7 @@ public class PushService extends Service {
             if (isServiceNotifEnabled(this)) {
                 startForeground(NOTIFICATION_ID, buildForegroundNotification());
             } else {
-                stopForeground(STOP_FOREGROUND_REMOVE);
+                removeForeground();
             }
             return START_STICKY;
         }
@@ -62,7 +73,7 @@ public class PushService extends Service {
         startForeground(NOTIFICATION_ID, buildForegroundNotification());
 
         if (!isServiceNotifEnabled(this)) {
-            stopForeground(STOP_FOREGROUND_REMOVE);
+            removeForeground();
         }
 
         if (!running) {
