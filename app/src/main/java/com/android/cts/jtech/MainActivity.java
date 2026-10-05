@@ -392,30 +392,31 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * A clicked link to a site that isn't allowed. It is never opened in this app: it goes to the
-     * phone's own browser if there is one, else it is copied so it can be used elsewhere. Anything
-     * but a web link (mailto:, intent: ...) is refused as before.
+     * A clicked link that this app doesn't open. It is never opened in this app: a web link goes
+     * to the phone's browser, an email link to its email app, a phone link to its dialer (filled
+     * in, never calling) and an SMS link to its messaging app. With no app for it, the link (or
+     * just the address or number) is copied. Any other kind (intent: ...) is refused as before.
      */
     private void openOutside(String url) {
-        String scheme = Uri.parse(url).getScheme();
-        if (!"http".equalsIgnoreCase(scheme) && !"https".equalsIgnoreCase(scheme)) {
+        String kind = OutsideLinks.kind(url);
+        if (kind == null) {
             JtechSoftkeys.message(this, "Not allowed");
             return;
         }
-        Intent intent = browserIntent(url);
+        Intent intent = outsideIntent(kind, url);
         if (intent != null) {
             try {
                 startActivity(intent);
                 return;
             } catch (RuntimeException e) {
-                // No browser after all (or it refused): copy instead.
+                // No app after all (or it refused): copy instead.
             }
         }
         try {
             ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             if (clipboard != null) {
-                clipboard.setPrimaryClip(ClipData.newPlainText("Link", url));
-                JtechSoftkeys.message(this, "Link copied");
+                clipboard.setPrimaryClip(ClipData.newPlainText("Link", OutsideLinks.copyText(url)));
+                JtechSoftkeys.message(this, OutsideLinks.copiedMessage(kind));
                 return;
             }
         } catch (RuntimeException e) {
@@ -425,13 +426,23 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * An intent that opens the URL in another app's browser, or null if the phone has none. Only
-     * apps other than this one count (this app handles no web links, but it is checked anyway);
-     * with one browser the intent names it, with several the phone's own choice applies.
+     * An intent that hands the link to another app, or null if the phone has none for it. Only
+     * apps other than this one count (this app handles none of these links, but it is checked
+     * anyway); with one app the intent names it, with several the phone's own choice applies.
      */
-    private Intent browserIntent(String url) {
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(url));
-        intent.addCategory(Intent.CATEGORY_BROWSABLE);
+    private Intent outsideIntent(String kind, String url) {
+        Uri uri = Uri.parse(url);
+        Intent intent;
+        if (OutsideLinks.WEB.equals(kind)) {
+            intent = new Intent(Intent.ACTION_VIEW, uri);
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        } else if (OutsideLinks.PHONE.equals(kind)) {
+            // DIAL fills the number in; only the user places the call.
+            intent = new Intent(Intent.ACTION_DIAL, uri);
+        } else {
+            // mailto:, sms:, smsto: - a new email or message to that address.
+            intent = new Intent(Intent.ACTION_SENDTO, uri);
+        }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         List<ResolveInfo> handlers = getPackageManager().queryIntentActivities(intent, 0);
         String own = getPackageName();
