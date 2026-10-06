@@ -4,15 +4,19 @@ import android.Manifest;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DownloadManager;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
 import android.os.Environment;
 import android.webkit.CookieManager;
+import android.webkit.MimeTypeMap;
 import android.webkit.URLUtil;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -25,6 +29,7 @@ import android.view.WindowManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -240,12 +245,29 @@ public class MainActivity extends Activity {
         settings.setSupportMultipleWindows(true);
 
         webView.setWebViewClient(new WebViewClient() {
+            // Android 6 only: no way to tell a clicked link from any other navigation here.
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (isAllowed(url)) {
                     return false;
                 }
-                JtechSoftkeys.message(MainActivity.this, "Not allowed");
+                openOutside(url);
+                return true;
+            }
+
+            // Android 7+: only a link the user clicked, in the page itself, leaves the app. A
+            // frame inside the page or a navigation nobody clicked is just refused, as before.
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                if (isAllowed(url)) {
+                    return false;
+                }
+                if (request.isForMainFrame() && request.hasGesture()) {
+                    openOutside(url);
+                } else {
+                    JtechSoftkeys.message(MainActivity.this, "Not allowed");
+                }
                 return true;
             }
 
@@ -277,7 +299,7 @@ public class MainActivity extends Activity {
                         done = true;
                         v.stopLoading();
                         v.post(v::destroy);
-                        openNewWindowUrl(url);
+                        openNewWindowUrl(url, isUserGesture);
                     }
 
                     @Override
@@ -356,14 +378,88 @@ public class MainActivity extends Activity {
         return false;
     }
 
-    /** A new-window link's URL: open it in the main WebView if it's allowed, like any link. */
-    private void openNewWindowUrl(String url) {
+    /** A new-window link's URL: open it in the main WebView if it's allowed, like any link; one
+     * that isn't leaves the app only if the user clicked it. */
+    private void openNewWindowUrl(String url, boolean clicked) {
         if (webView == null) return;
         if (isAllowed(url)) {
             webView.loadUrl(url);
+        } else if (clicked) {
+            openOutside(url);
         } else {
             JtechSoftkeys.message(this, "Not allowed");
         }
+    }
+
+    /**
+     * A clicked link that this app doesn't open. It is never opened in this app: a web link goes
+     * to the phone's browser, an email link to its email app, a phone link to its dialer (filled
+     * in, never calling) and an SMS link to its messaging app. With no app for it, the link (or
+     * just the address or number) is copied. Any other kind (intent: ...) is refused as before.
+     */
+    private void openOutside(String url) {
+        String kind = OutsideLinks.kind(url);
+        if (kind == null) {
+            JtechSoftkeys.message(this, "Not allowed");
+            return;
+        }
+        Intent intent = outsideIntent(kind, url);
+        if (intent != null) {
+            try {
+                startActivity(intent);
+                return;
+            } catch (RuntimeException e) {
+                // No app after all (or it refused): copy instead.
+            }
+        }
+        try {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                clipboard.setPrimaryClip(ClipData.newPlainText("Link", OutsideLinks.copyText(url)));
+                JtechSoftkeys.message(this, OutsideLinks.copiedMessage(kind));
+                return;
+            }
+        } catch (RuntimeException e) {
+            // Some builds refuse clipboard writes; fall through to the old message.
+        }
+        JtechSoftkeys.message(this, "Not allowed");
+    }
+
+    /**
+     * An intent that hands the link to another app, or null if the phone has none for it. Only
+     * apps other than this one count (this app handles none of these links, but it is checked
+     * anyway); with one app the intent names it, with several the phone's own choice applies.
+     */
+    private Intent outsideIntent(String kind, String url) {
+        Uri uri = Uri.parse(url);
+        Intent intent;
+        if (OutsideLinks.WEB.equals(kind)) {
+            intent = new Intent(Intent.ACTION_VIEW, uri);
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+        } else if (OutsideLinks.PHONE.equals(kind)) {
+            // DIAL fills the number in; only the user places the call.
+            intent = new Intent(Intent.ACTION_DIAL, uri);
+        } else {
+            // mailto:, sms:, smsto: - a new email or message to that address.
+            intent = new Intent(Intent.ACTION_SENDTO, uri);
+        }
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        List<ResolveInfo> handlers = getPackageManager().queryIntentActivities(intent, 0);
+        String own = getPackageName();
+        String other = null;
+        boolean ownListed = false;
+        for (ResolveInfo info : handlers) {
+            if (info.activityInfo == null) continue;
+            String pkg = info.activityInfo.packageName;
+            if (own.equals(pkg)) {
+                ownListed = true;
+            } else if (other == null) {
+                other = pkg;
+            }
+        }
+        if (other == null) return null;
+        if (ownListed || handlers.size() == 1) intent.setPackage(other);
+        return intent;
     }
 
     @Override
@@ -500,9 +596,7 @@ public class MainActivity extends Activity {
     }
 
     private void startDownload(String url, String contentDisposition, String mimetype) {
-        // Pass null mimetype so guessFileName preserves the original extension
-        // instead of remapping it (e.g. .apk -> .bin) based on MIME type
-        String fileName = URLUtil.guessFileName(url, contentDisposition, null);
+        String fileName = downloadFileName(url, contentDisposition, mimetype);
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
         request.setMimeType(mimetype);
         String cookie = CookieManager.getInstance().getCookie(url);
@@ -521,6 +615,32 @@ public class MainActivity extends Activity {
         DownloadManager dm = (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
         dm.enqueue(request);
         JtechSoftkeys.message(this, "Downloading " + fileName);
+    }
+
+    /**
+     * The name a download is saved under: the header's own name (FileNames reads both forms, which
+     * older Android can't), else Android's guess from the URL. guessFileName is given no MIME type
+     * so it keeps a real extension instead of remapping it (an .apk sent as octet-stream -> .bin);
+     * a name with no extension at all gets one from the MIME type, or .bin if there is none.
+     */
+    private static String downloadFileName(String url, String contentDisposition, String mimetype) {
+        String name = FileNames.fromDisposition(contentDisposition);
+        if (name == null) {
+            String guess = URLUtil.guessFileName(url, null, null);
+            // guessFileName appends ".bin" to a name with no extension; take that back off.
+            String segment = Uri.parse(url).getLastPathSegment();
+            name = guess.endsWith(".bin") && segment != null && !segment.endsWith(".bin")
+                    ? guess.substring(0, guess.length() - 4)
+                    : guess;
+        }
+        if (!FileNames.hasExtension(name)) {
+            while (name.endsWith(".")) name = name.substring(0, name.length() - 1);
+            if (name.isEmpty()) name = "downloadfile";
+            String key = FileNames.mimeKey(mimetype);
+            String ext = key != null ? MimeTypeMap.getSingleton().getExtensionFromMimeType(key) : null;
+            name = name + "." + (ext != null && !ext.isEmpty() ? ext : "bin");
+        }
+        return name;
     }
 
     private void hideSystemUI() {
